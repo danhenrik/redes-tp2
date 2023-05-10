@@ -100,10 +100,10 @@ int server_sockaddr_init(const char *proto, const char *portstr, struct sockaddr
   }
   else if (strcmp(proto, "v6") == 0) // socket is ipv6
   {
-    struct sockaddr_in6 *addr4 = (struct sockaddr_in6 *)storage;
-    addr4->sin6_family = AF_INET;
-    addr4->sin6_port = port;
-    addr4->sin6_addr = in6addr_any;
+    struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)storage;
+    addr6->sin6_family = AF_INET6;
+    addr6->sin6_port = port;
+    addr6->sin6_addr = in6addr_any;
     return 0;
   }
   return -1;

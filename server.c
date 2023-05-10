@@ -23,7 +23,7 @@ int main(int argc, char **argv)
   if (argc == 0)
     usage(argc, argv);
 
-  // create socket storage, store socket doesn't matter what protocol
+  // create socket storage, store socket doesn't matter what protocol it is
   struct sockaddr_storage storage;
   if (server_sockaddr_init(argv[1], argv[2], &storage) != 0)
     usage(argc, argv);
@@ -35,16 +35,17 @@ int main(int argc, char **argv)
   if (s == -1)
     log_error("on socket creation");
 
-  // enable rebinding to port imediatly after last instance was shut down
+  // enable re-binding to port imediatly after last instance was shut down
   int enable = 1;
   if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) != 0)
     log_error("on reusage of address port");
 
-  // start listening on port (bind to it)
+  // bind to port and start listening
   struct sockaddr *addr = (struct sockaddr *)(&storage);
 
   if (bind(s, addr, sizeof(storage)) != 0)
     log_error("on bind");
+
   if (listen(s, 10) != 0)
     log_error("on listen");
 
@@ -52,7 +53,7 @@ int main(int argc, char **argv)
   addrtostr(addr, addrstr, BUFSZ);
   printf("bound to %s, waiting connections\n", addrstr);
 
-  while (1) // start accepting clients requests
+  while (1) // start accepting clients requests, once at a time
   {
     struct sockaddr_storage cstorage;
     struct sockaddr *caddr = (struct sockaddr *)(&storage);

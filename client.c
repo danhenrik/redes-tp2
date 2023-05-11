@@ -41,8 +41,8 @@ void send_message(int sock, char *msg)
   printf("[conn] received %d bytes\n", count);
   puts(msg);
 
-  close(sock);
-  exit(EXIT_SUCCESS);
+  // close(sock);
+  // exit(EXIT_SUCCESS);
 }
 
 int main(int argc, char **argv)
@@ -77,6 +77,7 @@ int main(int argc, char **argv)
 
   // user menu
   char input[BUFSZ];
+  char msg[MSG_SIZE];
   while (1)
   {
     memset(input, 0, BUFSZ);
@@ -86,6 +87,8 @@ int main(int argc, char **argv)
     if (strncmp(select_command, input, strlen(select_command)) == 0)
     {
       char *filename = strrchr(input, ' ');
+
+      filename = filename + 1;
 
       if (!filename)
       {
@@ -124,8 +127,14 @@ int main(int argc, char **argv)
     else if (strncmp(send_command, input, strlen(send_command)) == 0)
     {
       // just send
-      fread(fp,MSG_SIZE)
-      send_message(sock, fp);
+      while (1)
+      {
+        fread(msg, sizeof(msg[0]), MSG_SIZE, fp);
+        printf("%d - %s\n", feof(fp), msg);
+        send_message(sock, msg);
+      }
+      fclose(fp);
+      close(sock)
     }
     else if (strncmp(exit_command, input, strlen(exit_command)) == 0)
     {

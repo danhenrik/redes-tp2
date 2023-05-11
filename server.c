@@ -71,17 +71,22 @@ int main(int argc, char **argv)
     char buf[BUFSZ];
     memset(buf, 0, BUFSZ);
     // message being considered is just the first receive
-    size_t count = recv(csock, buf, BUFSZ, 0);
+    while (1) // End of string != /end
+    {
+      size_t count = recv(csock, buf, BUFSZ, 0);
 
-    printf("[msg rcv] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
+      printf("[msg rcv] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
 
-    sprintf(buf, "[ACK] remote endpoint %.1000s\n", caddrstr);
+      sprintf(buf, "[ACK] remote endpoint %.1000s\n", caddrstr);
 
-    // respond to the client
-    count = send(csock, buf, strlen(buf) + 1, 0);
-    if (count != strlen(buf) + 1)
-      log_error("on send");
+      // respond to the client
+      count = send(csock, buf, strlen(buf) + 1, 0);
+      if (count != strlen(buf) + 1)
+        log_error("on send");
+    }
 
-    close(csock);
+    // char close_msg[] = "CLOSE_MSG";
+    // if (strncmp(close_msg, buf, strlen(close_msg))) // end of message is /end
+    // close(csock);
   }
 }

@@ -8,7 +8,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-#define BUFSZ 1024
+#define BUF_SZ 1024
+#define MAX_MSG_SZ 500
 
 void usage(int argc, char **argv)
 {
@@ -16,6 +17,8 @@ void usage(int argc, char **argv)
   printf("example: %s v4 51511\n", argv[0]);
   exit(EXIT_FAILURE);
 }
+
+// void recv_message()
 
 int main(int argc, char **argv)
 {
@@ -49,8 +52,8 @@ int main(int argc, char **argv)
   if (listen(s, 10) != 0)
     log_error("on listen");
 
-  char addrstr[BUFSZ];
-  addrtostr(addr, addrstr, BUFSZ);
+  char addrstr[BUF_SZ];
+  addrtostr(addr, addrstr, BUF_SZ);
   printf("bound to %s, waiting connections\n", addrstr);
 
   while (1) // start accepting clients requests, once at a time
@@ -64,29 +67,49 @@ int main(int argc, char **argv)
     if (csock == -1)
       log_error("on accept");
 
-    char caddrstr[BUFSZ];
-    addrtostr(caddr, caddrstr, BUFSZ);
+    char caddrstr[BUF_SZ];
+    addrtostr(caddr, caddrstr, BUF_SZ);
     printf("[inbound] connection from %s\n", caddrstr);
 
-    char buf[BUFSZ];
-    memset(buf, 0, BUFSZ);
-    // message being considered is just the first receive
+    char msg[MAX_MSG_SZ];
+
+    FILE *fp;
+
     while (1) // End of string != /end
     {
-      size_t count = recv(csock, buf, BUFSZ, 0);
+      memset(msg, 0, MAX_MSG_SZ);
+      int count = recv(csock, msg, MAX_MSG_SZ, 0);
+      // if msg is exit close connection from here before it sending a "connection closed" message (TODO)
 
-      printf("[msg rcv] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
+      // parse header and filename
+      char *payload = strchr(msg, ' ') + 1;
+      int payload_sz = strlen(payload);
 
-      sprintf(buf, "[ACK] remote endpoint %.1000s\n", caddrstr);
+      int filename_sz = strlen(msg) - payload_sz - 1;
+      char filename[filename_sz];
+      memcpy(filename, msg, filename_sz);
 
-      // respond to the client
-      count = send(csock, buf, strlen(buf) + 1, 0);
-      if (count != strlen(buf) + 1)
+      // Get rid of first " " in payload
+      memcpy(msg, payload + 1, payload_sz);
+      *msg = *msg - filename_sz;
+
+      // if the msg doesn't finish with a /end return error receiving file "filename"
+      if (strstr(msg, "/end") == NULL)
+      {
+        char error_response[MAX_MSG_SZ];
+        sprintf(error_response, "error receiving file %s”", filename);
+        count = send(csock, error_response, strlen(error_response), 0);
+      }
+      // strcmp(strrchr(msg, '/'), "end");
+
+      // else get rid of /end flag, write to file and go for next chunk
+      *msg = *msg - strlen("/end");
+      fp = fopen(filename, "a");
+      fwrite(msg, strlen(msg), 0, fp);
+
+      count = send(csock, "ACK", strlen("ACK"), 0);
+      if (count != strlen("ACK"))
         log_error("on send");
     }
-
-    // char close_msg[] = "CLOSE_MSG";
-    // if (strncmp(close_msg, buf, strlen(close_msg))) // end of message is /end
-    // close(csock);
   }
 }

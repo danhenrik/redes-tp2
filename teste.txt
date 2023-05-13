@@ -23,11 +23,11 @@ void send_message(int sock, char *msg)
 {
   // send message
   int count = send(sock, msg, strlen(msg), 0);
+  printf("%d\n", count);
   if (count != strlen(msg))
     log_error("on send");
-  printf("[conn] sent %d bytes\n", count);
 
-  // waits for the ACK response
+  // waits for the full response
   memset(msg, 0, MAX_MSG_SZ);
 
   count = recv(sock, msg, MAX_MSG_SZ, 0);
@@ -63,15 +63,15 @@ int main(int argc, char **argv)
   char send_command[] = "send file";
   char exit_command[] = "exit";
 
-  FILE *fp = NULL;
+  FILE *fp;
 
   // user menu
   char input[BUF_SZ];
   int header_sz = MAX_MSG_SZ;
   char header[header_sz];
   memset(header, 0, MAX_MSG_SZ);
-  char endFlag[] = "\\end";
-  int endFlag_sz = strlen(endFlag) -1;
+  char endFlag[] = "\end";
+  int endFlag_sz = strlen(endFlag);
   while (1)
   {
     memset(input, 0, BUF_SZ);
@@ -123,14 +123,14 @@ int main(int argc, char **argv)
 
       sprintf(header, "%s ", filename);
       header_sz = strlen(header);
-      printf("%s selected\n", filename);
+      printf("%s selected!\n", filename);
     }
     // Send File CMD
     else if (strncmp(send_command, input, strlen(send_command)) == 0)
     {
       if (fp == NULL)
       {
-        printf("no file selected!\n");
+        printf("no file selected");
         continue;
       }
       while (1)

@@ -24,10 +24,9 @@ int addrparse(const char *addrstr, const char *portstr, struct sockaddr_storage 
   if (port == 0)
     return -1;
 
-  port = htons(port); // host to network short (opposite is ntohs (network to host short)
+  port = htons(port); // host to network short
 
   struct in_addr inaddr4;
-
   if (inet_pton(AF_INET, addrstr, &inaddr4)) // 32 bit ipv4 addr
   {
     struct sockaddr_in *addr4 = (struct sockaddr_in *)storage;
@@ -38,10 +37,10 @@ int addrparse(const char *addrstr, const char *portstr, struct sockaddr_storage 
   }
 
   struct in_addr inaddr6;
-  if (inet_pton(AF_INET, addrstr, &inaddr6)) // 128 bit ipv6 addr
+  if (inet_pton(AF_INET6, addrstr, &inaddr6)) // 128 bit ipv6 addr
   {
     struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)storage;
-    addr6->sin6_family = AF_INET;
+    addr6->sin6_family = AF_INET6;
     addr6->sin6_port = port;
     memcpy(&(addr6->sin6_addr), &inaddr6, sizeof(inaddr6));
     return 0;
@@ -67,14 +66,12 @@ void addrtostr(const struct sockaddr *addr, char *str, size_t strsize)
   {
     version = 6;
     struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)addr;
-    if (!inet_ntop(AF_INET, &(addr6->sin6_addr), addrstr, INET6_ADDRSTRLEN + 1))
+    if (!inet_ntop(AF_INET6, &(addr6->sin6_addr), addrstr, INET6_ADDRSTRLEN + 1))
       log_error("on IPV6 ntop");
     port = ntohs(addr6->sin6_port);
   }
   else
-  {
     log_error("unknown protocol family");
-  }
 
   if (str)
     snprintf(str, strsize, "IPV%d %s %hu", version, addrstr, port);

@@ -33,8 +33,8 @@
       ],
       "stopAtEntry": false,
       "externalConsole": false,
-      "cwd": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP1",
-      "program": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP1/server",
+      "cwd": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP1/test",
+      "program": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP1/test/server",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

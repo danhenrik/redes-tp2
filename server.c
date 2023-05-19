@@ -45,7 +45,7 @@ int main(int argc, char **argv)
   if (s == -1)
     log_error("on socket creation");
 
-  // enable re-binding to port imediatly after last instance was shut down
+  // enable re-binding to port immediately after last instance was shut down
   int enable = 1;
   if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) != 0)
     log_error("on reusage of address port");
@@ -63,6 +63,8 @@ int main(int argc, char **argv)
   addrtostr(addr, addrstr, BUF_SZ);
   printf("[setup] bound to %s, waiting connections\n", addrstr);
 
+  char exit_command[] = "exit";
+
   while (1) // start accepting clients requests, once at a time
   {
     struct sockaddr_storage cstorage;
@@ -78,37 +80,63 @@ int main(int argc, char **argv)
     addrtostr(caddr, caddrstr, BUF_SZ);
     printf("[inbound] connection from %s\n", caddrstr);
 
-    char msg[MAX_MSG_SZ];
+    char msg[MAX_MSG_SZ + 1];
 
+    // setup file pointer and auxiliary variables
     FILE *fp = NULL;
     int is_new;
-
-    while (1) // End of string != /end
+    int final_chunk = 0;
+    while (1)
     {
       memset(msg, 0, MAX_MSG_SZ);
       int count = recv(csock, msg, MAX_MSG_SZ, 0);
       printf("[conn] received message (%d bytes)\n", count);
-      // if msg is exit close connection from here before it sending a "connection closed" message (TODO)
 
-      // parse header and filename
-      char *payload = strchr(msg, ' ') + 1;
-      int payload_sz = strlen(payload);
+      // if msg is exit close connection from here before it send a "connection closed" message
+      if (strcmp(exit_command, msg) == 0)
+      {
+        send_message(csock, "connection closed");
+        close(csock);
+        exit(EXIT_SUCCESS);
+      }
 
-      int filename_sz = strlen(msg) - payload_sz;
+      // parse header
+      int filename_sz = 0;
+      char *payload = strchr(msg, '.');
+      if (payload != NULL)
+      {
+        int formats_supported = 6;
+        char allowedExts[][6] = {".cpp", ".txt", ".c", ".py", ".tex", ".java"};
+        for (int i = 0; i < formats_supported; i++)
+        {
+          if (strncmp(payload, allowedExts[i], strlen(allowedExts[i])) == 0)
+          {
+            filename_sz = strlen(msg) - strlen(payload) + strlen(allowedExts[i]) + 1;
+            break;
+          }
+        }
+      }
+
+      // didnt find extension -> invalid one
+      if (filename_sz == 0)
+      {
+        send_message(csock, "file is invalid");
+        continue;
+      }
+
       char filename[filename_sz];
       memcpy(filename, msg, filename_sz);
       filename[filename_sz - 1] = '\0';
+      payload = msg + filename_sz - 1;
 
-      // if the msg doesn't finish with a \end return error receiving file "filename"
-      if (strstr(payload, "\\end") == NULL)
+      // if contains end it's the last chunk, so save the flag for later and cut the tag out of the payload
+      if (strstr(msg, "\\end") != NULL)
       {
-        char error_response[MAX_MSG_SZ];
-        sprintf(error_response, "error receiving file %s”", filename);
-        send_message(csock, error_response);
+        final_chunk = 1;
+        payload[strlen(payload) - 4] = '\0';
       }
 
-      // else get rid of /end flag, write to file and go for next chunk
-      payload[strlen(payload) - 4] = '\0';
+      // First file access, detect if is present or not in the dir to choose the message later.
       if (fp == NULL)
       {
         if (access(filename, F_OK) != -1)
@@ -118,8 +146,11 @@ int main(int argc, char **argv)
         fp = fopen(filename, "w");
       }
 
+      // write to file
       fprintf(fp, "%s", payload);
-      if (count < MAX_MSG_SZ)
+
+      // respond to client at end of file
+      if (final_chunk)
       {
         char end_message[MAX_MSG_SZ];
         if (is_new)
@@ -128,10 +159,13 @@ int main(int argc, char **argv)
           sprintf(end_message, "file %s overwritten", filename);
         send_message(csock, end_message);
         fclose(fp);
+        // reset everything (able to receive the next connection)
         fp = NULL;
+        final_chunk = 0;
         continue;
       }
 
+      // if not the final chunk send a simple acknowledgment message
       send_message(csock, "ACK");
     }
   }

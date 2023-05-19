@@ -27,7 +27,7 @@ void send_message(int sock, char *msg)
     log_error("on send");
   printf("[conn] sent message (%d bytes)\n", count);
 
-  // waits for the ACK response
+  // waits for the response
   memset(msg, 0, MAX_MSG_SZ);
 
   count = recv(sock, msg, MAX_MSG_SZ, 0);
@@ -143,6 +143,7 @@ int main(int argc, char **argv)
       fseek(fp, 0, SEEK_END);
       eof_offset = ftell(fp);
       fseek(fp, 0, SEEK_SET);
+
       // Create the header (filename)
       sprintf(header, "%s", filename);
       header_sz = strlen(header);
@@ -158,40 +159,56 @@ int main(int argc, char **argv)
         continue;
       }
 
-      // Compute payload size based on header size + " " + endFlag at the end as requested
-      int payload_sz = MAX_MSG_SZ - header_sz - endFlag_sz - 1;
-      char payload[payload_sz];
+      // Compute payload size based on header size
+      int payload_sz = MAX_MSG_SZ - header_sz;
+      char payload[payload_sz + 1];
       char msg[MAX_MSG_SZ];
+      int last_chunk = 0;
 
+      // send the file in chunks
       while (1)
       {
+        // reset memory so we dont send garbage through
         memset(payload, 0, payload_sz);
         memset(msg, 0, MAX_MSG_SZ);
 
-        // If the end is less than the remaining content simply send the remaining content
-        if (eof_offset < payload_sz)
-          payload_sz = eof_offset;
+        // If the end is less than the remaining content simply send the remaining content with the endflag (end of file)
+        if (eof_offset < payload_sz - endFlag_sz) // last chunk
+        {
+          last_chunk = 1;
+          payload_sz = eof_offset + endFlag_sz;
+        }
 
+        // read from file
         fread(payload, sizeof(payload[0]), payload_sz, fp);
+        payload[payload_sz] = 0;
 
-        sprintf(msg, "%s %s\\end", header, payload);
+        // If it's the end of the file add the \end flag else just send the chunk.
+        if (last_chunk)
+          sprintf(msg, "%s%s\\end", header, payload);
+        else
+          sprintf(msg, "%s%s", header, payload);
         send_message(sock, msg);
 
-        eof_offset -= payload_sz;
+        // Subtract the amount of data sent from the EOF tracker
+        eof_offset -= strlen(payload);
 
-        if (eof_offset == 0)
+        // Loop stop condition
+        if (last_chunk)
           break;
       }
-      fclose(fp);
 
       // reset everything
+      fclose(fp);
       fp = NULL;
     }
+    // Exit CMD
     else if (strncmp(exit_command, input, strlen(exit_command)) == 0)
     {
-      close(sock);
+      // Send exit command to server
+      send_message(sock, exit_command);
+      exit(EXIT_SUCCESS);
       break;
     }
   }
-  exit(EXIT_SUCCESS);
 }

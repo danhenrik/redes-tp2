@@ -80,7 +80,7 @@ int main(int argc, char **argv)
     addrtostr(caddr, caddrstr, BUF_SZ);
     printf("[inbound] connection from %s\n", caddrstr);
 
-    char msg[MAX_MSG_SZ + 1];
+    char msg[MAX_MSG_SZ];
 
     // setup file pointer and auxiliary variables
     FILE *fp = NULL;

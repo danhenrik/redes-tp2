@@ -47,26 +47,13 @@ int main(int argc, char **argv)
     usage(argc, argv);
 
   // create socket and connect to server
-  int sock;
-  int sock4 = socket(AF_INET, SOCK_STREAM, 0);
-  int sock6 = socket(AF_INET6, SOCK_STREAM, 0);
-
-  if (sock4 == -1)
-    log_error("on v4 socket creation");
-  if (sock6 == -1)
-    log_error("on v6 socket creation");
+  int sock = socket(storage.ss_family, SOCK_STREAM, 0);
 
   struct sockaddr *addr = (struct sockaddr *)(&storage);
 
-  // Try to connect using both protocols (v4 & v6) choose the one that works
-  int connected4 = connect(sock4, addr, sizeof(storage));
-  int connected6 = connect(sock6, addr, sizeof(storage));
+  int connected = connect(sock, addr, sizeof(storage));
 
-  if (connected4 == 0)
-    sock = sock4;
-  else if (connected6 == 0)
-    sock = sock6;
-  else
+  if (connected != 0)
   {
     log_error("on connect");
     exit(EXIT_FAILURE);

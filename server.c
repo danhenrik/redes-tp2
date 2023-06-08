@@ -39,8 +39,7 @@ int main(int argc, char **argv)
     usage(argc, argv);
 
   // create socket
-  int s;
-  s = socket(storage.ss_family, SOCK_STREAM, IPPROTO_TCP);
+  int s = socket(storage.ss_family, SOCK_STREAM, 0);
 
   if (s == -1)
     log_error("on socket creation");

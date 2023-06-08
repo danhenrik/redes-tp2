@@ -28,7 +28,7 @@
       "type": "cppdbg",
       "request": "launch",
       "args": [
-        "v6",
+        "v4",
         "5151"
       ],
       "stopAtEntry": false,
@@ -45,24 +45,5 @@
         }
       ]
     },
-    {
-      "name": "C/C++ Runner: Debug Session",
-      "type": "cppdbg",
-      "request": "launch",
-      "args": [],
-      "stopAtEntry": false,
-      "externalConsole": false,
-      "cwd": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP1",
-      "program": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP1/build/Debug/outDebug",
-      "MIMode": "gdb",
-      "miDebuggerPath": "gdb",
-      "setupCommands": [
-        {
-          "description": "Enable pretty-printing for gdb",
-          "text": "-enable-pretty-printing",
-          "ignoreFailures": true
-        }
-      ]
-    }
   ]
 }

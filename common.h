@@ -5,9 +5,10 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-#define MAX_MSG_SZ 2042
 #define BUF_SZ 2048
-#define MAX_CONNECTIONS 3
+#define MAX_MSG_SZ (BUF_SZ - 3 * sizeof(uint16_t))
+#define MAX_CONNECTIONS 15
+// #define DEBUG 
 
 struct message
 {
@@ -21,8 +22,6 @@ struct thread_data
 {
   int sock;
   struct sockaddr_storage storage;
-  void (*callback)(char *);
-  pthread_t tid;
 };
 
 void log_error(const char *msg);
@@ -33,10 +32,6 @@ void addrtostr(const struct sockaddr *addr, char *str, size_t strsize);
 
 int server_sockaddr_init(const char *proto, const char *portstr, struct sockaddr_storage *storage);
 
-char *serialize(struct message *msg);
-
 void send_message(int sock, struct message *msg);
-
-struct message *deserialize(char *buf);
 
 struct message *receive_message(int sockfd);

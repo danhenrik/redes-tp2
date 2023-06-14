@@ -108,47 +108,14 @@ int server_sockaddr_init(const char *proto, const char *portstr, struct sockaddr
   return -1;
 }
 
-char *serialize(struct message *msg)
-{
-  char *buf = malloc(BUF_SZ);
-  if (buf == NULL)
-    log_error("on malloc");
-  memset(buf, 0, BUF_SZ);
-  sprintf(buf, "_id_:%d _snd_:%d _rcv_:%d _msg_:%s", msg->IdMsg, msg->IdSender, msg->IdReceiver, msg->Message);
-  return buf;
-}
-
 void send_message(int sockfd, struct message *msg)
 {
-  printf(">>>>>>\n{\n\tIdMsg: %02d,\n\tIdSender: %d,\n\tIdReceiver: %d,\n\tMessage: %s\n}\n>>>>>>\n", msg->IdMsg, msg->IdSender, msg->IdReceiver, msg->Message);
+#ifdef DEBUG
+  printf(">>>>>\n{\n\tIdMsg: %02d,\n\tIdSender: %d,\n\tIdReceiver: %d,\n\tMessage: %s\n}\n>>>>>\n", msg->IdMsg, msg->IdSender, msg->IdReceiver, msg->Message);
+#endif
 
   if (send(sockfd, msg, BUF_SZ, 0) == -1)
     log_error("on send");
-}
-
-struct message *deserialize(char *buf)
-{
-  struct message *msg = malloc(sizeof(struct message));
-  if (msg == NULL)
-    log_error("on malloc");
-
-  char *idMsg = buf + strlen("_id_:");
-  idMsg[strcspn(idMsg, " ")] = 0;
-
-  char *idSender = buf + strlen("_id_:") + strlen(idMsg) + 1 + strlen("_snd_:");
-  idSender[strcspn(idSender, " ")] = 0;
-
-  char *idReceiver = buf + strlen("_id_:") + strlen(idMsg) + 1 + strlen("_snd_:") + strlen(idMsg) + 1 + strlen("_rcv_:");
-  idReceiver[strcspn(idReceiver, " ")] = 0;
-
-  char *message = buf + strlen("_id_:") + strlen(idMsg) + 1 + strlen("_snd_:") + strlen(idMsg) + 1 + strlen("_rcv_:") + strlen(idReceiver) + 1 + strlen("_msg_:");
-
-  msg->IdMsg = atoi(idMsg);
-  msg->IdSender = atoi(idSender);
-  msg->IdReceiver = atoi(idReceiver);
-  strcpy(msg->Message, message);
-
-  return msg;
 }
 
 struct message *receive_message(int sockfd)
@@ -160,6 +127,10 @@ struct message *receive_message(int sockfd)
   if (recv(sockfd, buf, BUF_SZ, 0) == -1)
     log_error("on recv");
   struct message *msg = (struct message *)buf;
+
+#ifdef DEBUG
   printf("<<<<<\n{\n\tIdMsg: %02d,\n\tIdSender: %d,\n\tIdReceiver: %d,\n\tMessage: %s\n}\n<<<<<\n", msg->IdMsg, msg->IdSender, msg->IdReceiver, msg->Message);
+#endif
+
   return msg;
 }

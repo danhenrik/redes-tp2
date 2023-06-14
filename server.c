@@ -33,6 +33,7 @@ int getConnectionsCount()
 
 void broadcast_user_list()
 {
+  // assemble message
   struct message notification;
   notification.IdMsg = 4;
   notification.IdSender = 0;
@@ -53,7 +54,7 @@ void broadcast_user_list()
   memset(notification.Message, 0, MAX_MSG_SZ);
   strcpy(notification.Message, connection_list);
 
-  // Notify everyone
+  // broadcast to everyone
   for (int j = 1; j <= MAX_CONNECTIONS; j++)
   {
     if (connections[j] != 0)
@@ -66,8 +67,8 @@ void broadcast_user_list()
 
 void *client_thread(void *data)
 {
-  printf("[inbound] moved connection to new thread\n");
-  // extract the data from the object input
+  printf("[inbound] moved new incoming connection to a new thread\n");
+
   struct thread_data *tdata = (struct thread_data *)data;
   struct sockaddr *caddr = (struct sockaddr *)(&(tdata->storage));
   int csock = tdata->sock;
@@ -81,6 +82,7 @@ void *client_thread(void *data)
 
   int myId = 0;
 
+  // start listening for messages
   while (1)
   {
     struct message *msg = receive_message(csock);
@@ -98,13 +100,13 @@ void *client_thread(void *data)
 
       broadcast_user_list();
 
+      // close thread since client disconnected
       pthread_exit(NULL);
     }
     // REQ_ADD
     if (msg->IdMsg == 1)
     {
       // check if there's space for new connections
-
       if (getConnectionsCount() >= MAX_CONNECTIONS)
       {
         struct message res;
@@ -117,26 +119,24 @@ void *client_thread(void *data)
         pthread_exit(NULL);
       }
 
-      int userAdded = 0;
+      // Find slot and add connection to the pool
       for (int i = 1; i <= MAX_CONNECTIONS; i++)
       {
         if (connections[i] == 0)
         {
-          // Add connection to the pool
           pthread_mutex_lock(&conn_mutex);
           connections[i] = csock;
           pthread_mutex_unlock(&conn_mutex);
-          userAdded = i;
           myId = i;
           break;
         }
       }
 
-      // Build response message with connnections list
+      // send connected list
       struct message res;
       res.IdMsg = 4;
       res.IdSender = 0;
-      res.IdReceiver = userAdded;
+      res.IdReceiver = myId;
 
       char connection_list[MAX_MSG_SZ];
       memset(connection_list, 0, MAX_MSG_SZ);
@@ -156,9 +156,11 @@ void *client_thread(void *data)
 
       send_message(csock, &res);
 
+      // notify everyone of the new user added
       broadcast_user_list();
+
       pthread_mutex_lock(&stdout_mutex);
-      printf("User %02d added\n", userAdded);
+      printf("User %02d added\n", myId);
       pthread_mutex_unlock(&stdout_mutex);
     }
     // REQ_REM
@@ -167,6 +169,7 @@ void *client_thread(void *data)
       struct message res;
       res.IdSender = 0;
       res.IdReceiver = msg->IdSender;
+      // if the user is in the connection pool
       if (connections[msg->IdSender] != 0)
       {
         // send response of success and close connection
@@ -180,6 +183,7 @@ void *client_thread(void *data)
         connections[msg->IdSender] = 0;
         pthread_mutex_unlock(&conn_mutex);
 
+        // notify everyone of the removal
         broadcast_user_list();
 
         pthread_mutex_lock(&stdout_mutex);
@@ -189,9 +193,9 @@ void *client_thread(void *data)
 
         pthread_exit(NULL);
       }
+      // sender not found in connection pool
       else
       {
-        // send response of failure
         res.IdMsg = 7;
         strcpy(res.Message, "02");
         send_message(csock, &res);
@@ -223,7 +227,11 @@ void *client_thread(void *data)
       else
       {
         if (connections[msg->IdReceiver] != 0)
+        {
+          // Send to both so sender knows it was sent to receiver
+          send_message(connections[msg->IdSender], msg);
           send_message(connections[msg->IdReceiver], msg);
+        }
         else
         {
           pthread_mutex_lock(&stdout_mutex);
@@ -254,7 +262,7 @@ int main(int argc, char **argv)
   if (server_sockaddr_init(argv[1], argv[2], &storage) != 0)
     usage(argc, argv);
 
-  // create socket
+  // setup socket
   int s = socket(storage.ss_family, SOCK_STREAM, 0);
 
   if (s == -1)
@@ -278,11 +286,12 @@ int main(int argc, char **argv)
   addrtostr(addr, addrstr, BUF_SZ);
   printf("[setup] bound to %s, waiting connections\n", addrstr);
 
-  // Initialize mutex to connection pool
+  // Initialize mutex to connection pool and stdout
   pthread_mutex_init(&conn_mutex, NULL);
   pthread_mutex_init(&stdout_mutex, NULL);
 
-  while (1) // start accepting clients requests, once at a time
+  // start accepting clients requests, imediately placing each new connection in a new thread
+  while (1)
   {
     struct sockaddr_storage cstorage;
     struct sockaddr *caddr = (struct sockaddr *)(&storage);
@@ -295,12 +304,10 @@ int main(int argc, char **argv)
     struct thread_data *tdata = malloc(sizeof(*tdata));
     if (!tdata)
       log_error("on pthread tdata malloc");
-
     tdata->sock = csock;
     memcpy(&(tdata->storage), &storage, sizeof(storage));
-    pthread_t tid;
-    tdata->tid = tid;
 
+    pthread_t tid;
     pthread_create(&tid, NULL, client_thread, tdata);
   }
 

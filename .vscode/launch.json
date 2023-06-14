@@ -2,17 +2,17 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Client",
+      "name": "User",
       "type": "cppdbg",
       "request": "launch",
       "args": [
-        "127.0.0.1",
+        "::1",
         "5151"
       ],
       "stopAtEntry": false,
       "externalConsole": false,
-      "cwd": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP1",
-      "program": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP1/client",
+      "cwd": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP2",
+      "program": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP2/user",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [
@@ -28,13 +28,13 @@
       "type": "cppdbg",
       "request": "launch",
       "args": [
-        "v4",
+        "v6",
         "5151"
       ],
       "stopAtEntry": false,
       "externalConsole": false,
-      "cwd": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP1/test",
-      "program": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP1/test/server",
+      "cwd": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP2",
+      "program": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP2/server",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

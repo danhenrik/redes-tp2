@@ -34,5 +34,17 @@
     "**/.vscode/**"
   ],
   "C_Cpp_Runner.useAddressSanitizer": false,
-  "C_Cpp_Runner.showCompilationTime": false
+  "C_Cpp_Runner.showCompilationTime": false,
+  "files.associations": {
+    "*.html": "html",
+    "*.py": "python",
+    "*.txt": "plaintext",
+    "types.h": "c",
+    "pthread.h": "c",
+    "stdlib.h": "c",
+    "common.h": "c",
+    "inet.h": "c",
+    "socket.h": "c",
+    "cstdlib": "c"
+  }
 }

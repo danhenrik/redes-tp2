@@ -1,12 +1,5 @@
 #include "common.h"
 
-#include <inttypes.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-
-#include <arpa/inet.h>
-
 void log_error(const char *msg)
 {
   char error[] = "error ";
@@ -36,7 +29,7 @@ int addrparse(const char *addrstr, const char *portstr, struct sockaddr_storage 
     return 0;
   }
 
-  struct in_addr inaddr6;
+  struct in6_addr inaddr6;
   if (inet_pton(AF_INET6, addrstr, &inaddr6)) // 128 bit ipv6 addr
   {
     struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)storage;
@@ -59,7 +52,10 @@ void addrtostr(const struct sockaddr *addr, char *str, size_t strsize)
     version = 4;
     struct sockaddr_in *addr4 = (struct sockaddr_in *)addr;
     if (!inet_ntop(AF_INET, &(addr4->sin_addr), addrstr, INET_ADDRSTRLEN + 1))
+    {
       log_error("on IPV4 ntop");
+      exit(EXIT_FAILURE);
+    }
     port = ntohs(addr4->sin_port);
   }
   else if (addr->sa_family == AF_INET6) // IPV6
@@ -67,11 +63,17 @@ void addrtostr(const struct sockaddr *addr, char *str, size_t strsize)
     version = 6;
     struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)addr;
     if (!inet_ntop(AF_INET6, &(addr6->sin6_addr), addrstr, INET6_ADDRSTRLEN + 1))
+    {
       log_error("on IPV6 ntop");
+      exit(EXIT_FAILURE);
+    }
     port = ntohs(addr6->sin6_port);
   }
   else
+  {
     log_error("unknown protocol family");
+    exit(EXIT_FAILURE);
+  }
 
   if (str)
     snprintf(str, strsize, "IPV%d %s %hu", version, addrstr, port);
@@ -104,4 +106,60 @@ int server_sockaddr_init(const char *proto, const char *portstr, struct sockaddr
     return 0;
   }
   return -1;
+}
+
+char *serialize(struct message *msg)
+{
+  char *buf = malloc(BUF_SZ);
+  if (buf == NULL)
+    log_error("on malloc");
+  memset(buf, 0, BUF_SZ);
+  sprintf(buf, "_id_:%d _snd_:%d _rcv_:%d _msg_:%s", msg->IdMsg, msg->IdSender, msg->IdReceiver, msg->Message);
+  return buf;
+}
+
+void send_message(int sockfd, struct message *msg)
+{
+  printf(">>>>>>\n{\n\tIdMsg: %02d,\n\tIdSender: %d,\n\tIdReceiver: %d,\n\tMessage: %s\n}\n>>>>>>\n", msg->IdMsg, msg->IdSender, msg->IdReceiver, msg->Message);
+
+  if (send(sockfd, msg, BUF_SZ, 0) == -1)
+    log_error("on send");
+}
+
+struct message *deserialize(char *buf)
+{
+  struct message *msg = malloc(sizeof(struct message));
+  if (msg == NULL)
+    log_error("on malloc");
+
+  char *idMsg = buf + strlen("_id_:");
+  idMsg[strcspn(idMsg, " ")] = 0;
+
+  char *idSender = buf + strlen("_id_:") + strlen(idMsg) + 1 + strlen("_snd_:");
+  idSender[strcspn(idSender, " ")] = 0;
+
+  char *idReceiver = buf + strlen("_id_:") + strlen(idMsg) + 1 + strlen("_snd_:") + strlen(idMsg) + 1 + strlen("_rcv_:");
+  idReceiver[strcspn(idReceiver, " ")] = 0;
+
+  char *message = buf + strlen("_id_:") + strlen(idMsg) + 1 + strlen("_snd_:") + strlen(idMsg) + 1 + strlen("_rcv_:") + strlen(idReceiver) + 1 + strlen("_msg_:");
+
+  msg->IdMsg = atoi(idMsg);
+  msg->IdSender = atoi(idSender);
+  msg->IdReceiver = atoi(idReceiver);
+  strcpy(msg->Message, message);
+
+  return msg;
+}
+
+struct message *receive_message(int sockfd)
+{
+  char *buf = malloc(BUF_SZ);
+  if (buf == NULL)
+    log_error("on malloc");
+  memset(buf, 0, BUF_SZ);
+  if (recv(sockfd, buf, BUF_SZ, 0) == -1)
+    log_error("on recv");
+  struct message *msg = (struct message *)buf;
+  printf("<<<<<\n{\n\tIdMsg: %02d,\n\tIdSender: %d,\n\tIdReceiver: %d,\n\tMessage: %s\n}\n<<<<<\n", msg->IdMsg, msg->IdSender, msg->IdReceiver, msg->Message);
+  return msg;
 }

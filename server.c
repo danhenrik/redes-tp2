@@ -188,7 +188,6 @@ void *client_thread(void *data)
 
         pthread_mutex_lock(&stdout_mutex);
         printf("User %02d removed\n", msg->IdSender);
-        fflush(stdout);
         pthread_mutex_unlock(&stdout_mutex);
 
         pthread_exit(NULL);

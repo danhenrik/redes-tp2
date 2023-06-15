@@ -98,7 +98,6 @@ void *listener_thread(void *data)
       // Sent privately to me
       else if (msg->IdReceiver == myId)
         printf("P [%02d:%02d] %02d: %s\n", now.tm_hour, now.tm_min, msg->IdSender, msg->Message);
-      fflush(stdout);
     }
     // error messages
     else if (msg->IdMsg == 7)

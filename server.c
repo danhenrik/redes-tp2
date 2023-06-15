@@ -7,8 +7,11 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <pthread.h>
 
-#define BUFSZ 1024
+pthread_mutex_t conn_mutex;
+pthread_mutex_t stdout_mutex;
+int connections[MAX_CONNECTIONS + 1];
 
 void usage(int argc, char **argv)
 {
@@ -17,70 +20,280 @@ void usage(int argc, char **argv)
   exit(EXIT_FAILURE);
 }
 
+void broadcast_user_list()
+{
+  // assemble message
+  struct message notification;
+  notification.IdMsg = 4;
+  notification.IdSender = 0;
+
+  char connection_list[MAX_MSG_SZ];
+  memset(connection_list, 0, MAX_MSG_SZ);
+  char int_str[3];
+  for (int j = 1; j <= MAX_CONNECTIONS; j++)
+  {
+    memset(int_str, 0, 3);
+    if (connections[j] != 0)
+    {
+      sprintf(int_str, "%d", j);
+      strcat(connection_list, int_str);
+      strcat(connection_list, ",");
+    }
+  }
+  connection_list[strlen(connection_list) - 1] = '\0';
+  memset(notification.Message, 0, MAX_MSG_SZ);
+  strcpy(notification.Message, connection_list);
+
+  // send to everyone
+  for (int j = 1; j <= MAX_CONNECTIONS; j++)
+  {
+    if (connections[j] != 0)
+    {
+      notification.IdReceiver = j;
+      send_message(connections[j], &notification);
+    }
+  }
+}
+
+void *client_thread(void *data)
+{
+  printf("[inbound] moved new incoming connection to a new thread\n");
+
+  struct thread_data *tdata = (struct thread_data *)data;
+  struct sockaddr *caddr = (struct sockaddr *)(&(tdata->storage));
+  int csock = tdata->sock;
+
+  char caddrstr[BUF_SZ];
+  addrtostr(caddr, caddrstr, BUF_SZ);
+
+  pthread_mutex_lock(&stdout_mutex);
+  printf("[inbound] connection from %s\n", caddrstr);
+  pthread_mutex_unlock(&stdout_mutex);
+
+  int myId = 0;
+
+  // start listening for messages
+  while (1)
+  {
+    struct message *msg = receive_message(csock);
+
+    // CTRL-C (SIGINT) on client
+    if (msg->IdMsg == 0)
+    {
+      pthread_mutex_lock(&stdout_mutex);
+      printf("User with id %02d quit, stopping client thread\n", myId);
+      pthread_mutex_unlock(&stdout_mutex);
+
+      pthread_mutex_lock(&conn_mutex);
+      connections[myId] = 0;
+      pthread_mutex_unlock(&conn_mutex);
+
+      broadcast_user_list();
+
+      pthread_exit(NULL);
+    }
+    // REQ_ADD
+    if (msg->IdMsg == 1)
+    {
+      pthread_mutex_lock(&conn_mutex);
+      // find slot and add connection to the pool
+      for (int i = 1; i <= MAX_CONNECTIONS; i++)
+      {
+        if (connections[i] == 0)
+        {
+          connections[i] = csock;
+          myId = i;
+          break;
+        }
+      }
+
+      // couldn't find a empty slot
+      if (myId == 0)
+      {
+        struct message res;
+        res.IdMsg = 7;
+        res.IdSender = 0;
+        res.IdReceiver = 0;
+        strcpy(res.Message, "01");
+        send_message(csock, &res);
+        close(csock);
+        pthread_exit(NULL);
+      }
+
+      // send connection list
+      struct message res;
+      res.IdMsg = 4;
+      res.IdSender = 0;
+      res.IdReceiver = myId;
+
+      char connection_list[MAX_MSG_SZ];
+      memset(connection_list, 0, MAX_MSG_SZ);
+      char int_str[3];
+      for (int j = 1; j <= MAX_CONNECTIONS; j++)
+      {
+        memset(int_str, 0, 3);
+        if (connections[j] != 0)
+        {
+          sprintf(int_str, "%d", j);
+          strcat(connection_list, int_str);
+          strcat(connection_list, ",");
+        }
+      }
+      connection_list[strlen(connection_list) - 1] = '\0';
+      memset(res.Message, 0, MAX_MSG_SZ);
+      strcpy(res.Message, connection_list);
+
+      send_message(csock, &res);
+
+      // notify everyone of the new user added
+      broadcast_user_list();
+      pthread_mutex_unlock(&conn_mutex);
+
+      pthread_mutex_lock(&stdout_mutex);
+      printf("User %02d added\n", myId);
+      pthread_mutex_unlock(&stdout_mutex);
+    }
+    // REQ_REM
+    else if (msg->IdMsg == 2)
+    {
+      struct message res;
+      res.IdSender = 0;
+      res.IdReceiver = msg->IdSender;
+      // sender not found in connection pool
+      if (connections[msg->IdSender] == 0)
+      {
+        res.IdMsg = 7;
+        strcpy(res.Message, "02");
+        send_message(csock, &res);
+        continue;
+      }
+
+      // send response of success and close connection
+      pthread_mutex_lock(&conn_mutex);
+      res.IdMsg = 8;
+      strcpy(res.Message, "01");
+      send_message(connections[msg->IdSender], &res);
+      close(connections[msg->IdSender]);
+
+      // remove from connection pool
+      connections[msg->IdSender] = 0;
+
+      // notify everyone of the removal and exit thread
+      broadcast_user_list();
+      pthread_mutex_unlock(&conn_mutex);
+
+      pthread_mutex_lock(&stdout_mutex);
+      printf("User %02d removed\n", msg->IdSender);
+      pthread_mutex_unlock(&stdout_mutex);
+
+      pthread_exit(NULL);
+    }
+    // MSG
+    else if (msg->IdMsg == 6)
+    {
+      // broadcast
+      if (msg->IdReceiver == 0)
+      {
+        // send to every socket in the connection pool
+        for (int i = 1; i <= MAX_CONNECTIONS; i++)
+        {
+          if (connections[i] != 0)
+            send_message(connections[i], msg);
+        }
+
+        // log message
+        time_t mytime;
+        time(&mytime);
+        struct tm now;
+        localtime_r(&mytime, &now);
+        pthread_mutex_lock(&stdout_mutex);
+        printf("[%02d:%02d] %02d: %s\n", now.tm_hour, now.tm_min, msg->IdSender, msg->Message);
+        pthread_mutex_unlock(&stdout_mutex);
+      }
+      // unicast
+      else
+      {
+        // receiver not found, send error message
+        if (connections[msg->IdReceiver] == 0)
+        {
+          pthread_mutex_lock(&stdout_mutex);
+          printf("User %02d not found\n", msg->IdReceiver);
+          pthread_mutex_unlock(&stdout_mutex);
+
+          struct message err_msg;
+          err_msg.IdMsg = 7;
+          err_msg.IdSender = 0;
+          err_msg.IdReceiver = 0;
+          strcpy(err_msg.Message, "03");
+          send_message(connections[msg->IdSender], &err_msg);
+          continue;
+        }
+
+        // Send to both so sender knows it was sent successfull
+        send_message(connections[msg->IdSender], msg);
+        send_message(connections[msg->IdReceiver], msg);
+      }
+    }
+  }
+}
+
 int main(int argc, char **argv)
 {
-  // show helper message
   if (argc == 0)
     usage(argc, argv);
 
-  // create socket storage, store socket doesn't matter what protocol
   struct sockaddr_storage storage;
   if (server_sockaddr_init(argv[1], argv[2], &storage) != 0)
     usage(argc, argv);
 
-  // create socket
-  int s;
-  s = socket(storage.ss_family, SOCK_STREAM, 0);
+  // setup socket
+  int s = socket(storage.ss_family, SOCK_STREAM, 0);
 
   if (s == -1)
     log_error("on socket creation");
 
-  // enable rebinding to port imediatly after last instance was shut down
+  // enable re-binding to port immediately after last instance was shut down
   int enable = 1;
   if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) != 0)
     log_error("on reusage of address port");
 
-  // start listening on port (bind to it)
+  // bind to port and start listening
   struct sockaddr *addr = (struct sockaddr *)(&storage);
 
   if (bind(s, addr, sizeof(storage)) != 0)
     log_error("on bind");
-  if (listen(s, 10) != 0)
+
+  if (listen(s, 15) != 0)
     log_error("on listen");
 
-  char addrstr[BUFSZ];
-  addrtostr(addr, addrstr, BUFSZ);
-  printf("bound to %s, waiting connections\n", addrstr);
+  char addrstr[BUF_SZ];
+  addrtostr(addr, addrstr, BUF_SZ);
+  printf("[setup] bound to %s, waiting connections\n", addrstr);
 
-  while (1) // start accepting clients requests
+  // Initialize mutex to connection pool and stdout
+  pthread_mutex_init(&conn_mutex, NULL);
+  pthread_mutex_init(&stdout_mutex, NULL);
+
+  // start accepting client requests, imediately placing each new connection in a new thread
+  while (1)
   {
     struct sockaddr_storage cstorage;
     struct sockaddr *caddr = (struct sockaddr *)(&storage);
     socklen_t caddrlen = sizeof(cstorage);
 
     int csock = accept(s, caddr, &caddrlen);
-
     if (csock == -1)
       log_error("on accept");
 
-    char caddrstr[BUFSZ];
-    addrtostr(caddr, caddrstr, BUFSZ);
-    printf("[inbound] connection from %s\n", caddrstr);
+    struct thread_data *tdata = malloc(sizeof(*tdata));
+    if (!tdata)
+      log_error("on pthread tdata malloc");
+    tdata->sock = csock;
+    memcpy(&(tdata->storage), &storage, sizeof(storage));
 
-    char buf[BUFSZ];
-    memset(buf, 0, BUFSZ);
-    // message being considered is just the first receive
-    size_t count = recv(csock, buf, BUFSZ, 0);
-
-    printf("[msg rcv] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
-
-    sprintf(buf, "[ACK] remote endpoint %.1000s\n", caddrstr);
-
-    // respond to the client
-    count = send(csock, buf, strlen(buf) + 1, 0);
-    if (count != strlen(buf) + 1)
-      log_error("on send");
-
-    close(csock);
+    pthread_t tid;
+    pthread_create(&tid, NULL, client_thread, tdata);
   }
+
+  exit(EXIT_SUCCESS);
 }

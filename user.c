@@ -31,15 +31,17 @@ void *listener_thread(void *data)
   {
     struct message *msg = receive_message(sock);
 
-    // CTRL-C (SIGINT) on server
-    if (msg->IdMsg == 0)
-    {
-      printf("Server closed, stopping execution\n");
-      exit(EXIT_FAILURE);
-    }
     // connections list update (both add and remove)
+    if (msg->IdMsg == 2)
+    {
+      // REQ_REM -> A user was removed
+      int userRemoved = msg->IdSender;
+      connections[userRemoved] = 0;
+      printf("User %02d left the group!\n", userRemoved);
+    }
     else if (msg->IdMsg == 4)
     {
+      myId = msg->IdReceiver;
       // Parse the list of connections received as string like if it was an array (separated by comma)
       int length = strlen(msg->Message);
       char n_str[2] = "";
@@ -48,56 +50,20 @@ void *listener_thread(void *data)
         if (msg->Message[i] == ',' || length == i)
         {
           int userId = atoi(n_str);
-          if (connections[userId] == 0 || connections[userId] == 3)
-          {
-            connections[userId] = 1;
-            printf("User %02d joined the group!\n", userId);
-          }
-          // flag connections in the list as 2 so later we can distinguish them from removed connections,
-          // those still marked with 1
-          if (connections[userId] == 1)
-            connections[userId] = 2;
-
+          connections[userId] = 1;
           memset(n_str, 0, 2);
           continue;
         }
         strncat(n_str, &msg->Message[i], 1);
       }
-
-      // remove connections that are not in the list
-      for (int i = 0; i <= MAX_CONNECTIONS; i++)
-      {
-        // as we flagged in the iteration over the list, connections marked with 1 are not in the updated list
-        if (connections[i] == 1)
-        {
-          connections[i] = 0;
-          printf("User %02d left the group!\n", i);
-        }
-        // set the flag back to 1 for the next update
-        else if (connections[i] == 2)
-          connections[i] = 1;
-      }
     }
     // receive text message (broadcast or unicast)
     else if (msg->IdMsg == 6)
     {
-      time_t mytime;
-      time(&mytime);
-      struct tm now;
-      localtime_r(&mytime, &now);
-
-      // broadcasted by me
-      if (msg->IdSender == myId && msg->IdReceiver == 0)
-        printf("[%02d:%02d] -> all: %s\n", now.tm_hour, now.tm_min, msg->Message);
-      // broadcasted to me
-      else if (msg->IdReceiver == 0)
-        printf("[%02d:%02d] %02d: %s\n", now.tm_hour, now.tm_min, msg->IdSender, msg->Message);
-      // privately sent by me
-      else if (msg->IdSender == myId && msg->IdReceiver != 0)
-        printf("P [%02d:%02d] -> %02d: %s\n", now.tm_hour, now.tm_min, msg->IdReceiver, msg->Message);
-      // privately sent to me
-      else if (msg->IdReceiver == myId)
-        printf("P [%02d:%02d] %02d: %s\n", now.tm_hour, now.tm_min, msg->IdSender, msg->Message);
+      //  is not private or broadcast message, it is a user added notification
+      if (strncmp(msg->Message, "[", 1) != 0 && strncmp(msg->Message, "P [", 3) != 0)
+        connections[msg->IdSender] = 1;
+      printf("%s\n", msg->Message);
     }
     // error messages
     else if (msg->IdMsg == 7)
@@ -110,8 +76,11 @@ void *listener_thread(void *data)
     // success on close connection
     else if (msg->IdMsg == 8)
     {
-      printf("Removed Successfully\n");
-      exit(EXIT_SUCCESS);
+      if (strcmp(msg->Message, "01") == 0)
+      {
+        printf("Removed Successfully\n");
+        exit(EXIT_SUCCESS);
+      }
     }
   }
 }
@@ -148,30 +117,16 @@ int main(int argc, char **argv)
   send_message(sock, &req);
 
   struct message *res = receive_message(sock);
-  // successfully connected
-  if (res->IdMsg == 4)
+
+  // success message
+  if (res->IdMsg == 6)
   {
-    int length = strlen(res->Message);
-    char n_str[2] = "";
-    for (int i = 0; i <= length; i++)
-    {
-      if (res->Message[i] == ',' || length == i)
-      {
-        int userId = atoi(n_str);
-        if (res->IdReceiver == userId)
-          connections[userId] = 3;
-        else
-          connections[userId] = 1;
-        memset(n_str, 0, 2);
-        continue;
-      }
-      strncat(n_str, &res->Message[i], 1);
-    }
     myId = res->IdReceiver;
+    printf("%s\n", res->Message);
   }
+  // error messages
   else if (res->IdMsg == 7)
   {
-    // Quit if unable to connect
     if (strcmp(res->Message, "01") == 0)
     {
       printf("User limit exceeded\n");
@@ -290,7 +245,7 @@ int main(int argc, char **argv)
     // list users
     else if (strncmp(list_users_command, input, strlen(list_users_command)) == 0)
     {
-      // Print the list (saved locally) excluding myself 
+      // Print the list (saved locally) excluding myself
       for (int i = 1; i <= MAX_CONNECTIONS; i++)
       {
         if (connections[i] == 1 && myId != i)
@@ -306,6 +261,7 @@ int main(int argc, char **argv)
       req.IdMsg = 2;
       req.IdSender = myId;
       req.IdReceiver = 0;
+      memset(req.Message, 0, MAX_MSG_SZ);
       strcpy(req.Message, "");
 
       send_message(sock, &req);

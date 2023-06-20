@@ -121,8 +121,6 @@ void send_message(int sockfd, struct message *msg)
 struct message *receive_message(int sockfd)
 {
   char *buf = malloc(BUF_SZ);
-  if (buf == NULL)
-    log_error("on malloc");
   memset(buf, 0, BUF_SZ);
   if (recv(sockfd, buf, BUF_SZ, 0) == -1)
     log_error("on recv");

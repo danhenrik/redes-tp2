@@ -20,38 +20,12 @@ void usage(int argc, char **argv)
   exit(EXIT_FAILURE);
 }
 
-void broadcast_user_list()
+void broadcast_message(struct message *msg)
 {
-  // assemble message
-  struct message notification;
-  notification.IdMsg = 4;
-  notification.IdSender = 0;
-
-  char connection_list[MAX_MSG_SZ];
-  memset(connection_list, 0, MAX_MSG_SZ);
-  char int_str[3];
-  for (int j = 1; j <= MAX_CONNECTIONS; j++)
+  for (int i = 1; i <= MAX_CONNECTIONS; i++)
   {
-    memset(int_str, 0, 3);
-    if (connections[j] != 0)
-    {
-      sprintf(int_str, "%d", j);
-      strcat(connection_list, int_str);
-      strcat(connection_list, ",");
-    }
-  }
-  connection_list[strlen(connection_list) - 1] = '\0';
-  memset(notification.Message, 0, MAX_MSG_SZ);
-  strcpy(notification.Message, connection_list);
-
-  // send to everyone
-  for (int j = 1; j <= MAX_CONNECTIONS; j++)
-  {
-    if (connections[j] != 0)
-    {
-      notification.IdReceiver = j;
-      send_message(connections[j], &notification);
-    }
+    if (connections[i] != 0)
+      send_message(connections[i], msg);
   }
 }
 
@@ -76,27 +50,13 @@ void *client_thread(void *data)
   while (1)
   {
     struct message *msg = receive_message(csock);
+    struct message res;
 
-    // CTRL-C (SIGINT) on client
-    if (msg->IdMsg == 0)
-    {
-      pthread_mutex_lock(&stdout_mutex);
-      printf("User with id %02d quit, stopping client thread\n", myId);
-      pthread_mutex_unlock(&stdout_mutex);
-
-      pthread_mutex_lock(&conn_mutex);
-      connections[myId] = 0;
-      pthread_mutex_unlock(&conn_mutex);
-
-      broadcast_user_list();
-
-      pthread_exit(NULL);
-    }
     // REQ_ADD
     if (msg->IdMsg == 1)
     {
-      pthread_mutex_lock(&conn_mutex);
       // find slot and add connection to the pool
+      pthread_mutex_lock(&conn_mutex);
       for (int i = 1; i <= MAX_CONNECTIONS; i++)
       {
         if (connections[i] == 0)
@@ -106,11 +66,11 @@ void *client_thread(void *data)
           break;
         }
       }
+      pthread_mutex_unlock(&conn_mutex);
 
       // couldn't find a empty slot
       if (myId == 0)
       {
-        struct message res;
         res.IdMsg = 7;
         res.IdSender = 0;
         res.IdReceiver = 0;
@@ -120,8 +80,20 @@ void *client_thread(void *data)
         pthread_exit(NULL);
       }
 
-      // send connection list
-      struct message res;
+      // notify everyone of the new user added
+      res.IdMsg = 6;
+      res.IdSender = myId;
+      res.IdReceiver = 0;
+      memset(res.Message, 0, MAX_MSG_SZ);
+      sprintf(res.Message, "User %02d joined the group!", myId);
+
+      for (int i = 1; i <= MAX_CONNECTIONS; i++)
+      {
+        if (connections[i] != 0)
+          send_message(connections[i], &res);
+      }
+
+      // send connection list to new user
       res.IdMsg = 4;
       res.IdSender = 0;
       res.IdReceiver = myId;
@@ -145,10 +117,6 @@ void *client_thread(void *data)
 
       send_message(csock, &res);
 
-      // notify everyone of the new user added
-      broadcast_user_list();
-      pthread_mutex_unlock(&conn_mutex);
-
       pthread_mutex_lock(&stdout_mutex);
       printf("User %02d added\n", myId);
       pthread_mutex_unlock(&stdout_mutex);
@@ -156,12 +124,13 @@ void *client_thread(void *data)
     // REQ_REM
     else if (msg->IdMsg == 2)
     {
-      struct message res;
+      pthread_mutex_lock(&conn_mutex);
       res.IdSender = 0;
       res.IdReceiver = msg->IdSender;
       // sender not found in connection pool
       if (connections[msg->IdSender] == 0)
       {
+        printf("User %02d found\n", msg->IdSender);
         res.IdMsg = 7;
         strcpy(res.Message, "02");
         send_message(csock, &res);
@@ -169,7 +138,6 @@ void *client_thread(void *data)
       }
 
       // send response of success and close connection
-      pthread_mutex_lock(&conn_mutex);
       res.IdMsg = 8;
       strcpy(res.Message, "01");
       send_message(connections[msg->IdSender], &res);
@@ -177,10 +145,10 @@ void *client_thread(void *data)
 
       // remove from connection pool
       connections[msg->IdSender] = 0;
+      pthread_mutex_unlock(&conn_mutex);
 
       // notify everyone of the removal and exit thread
-      broadcast_user_list();
-      pthread_mutex_unlock(&conn_mutex);
+      broadcast_message(msg);
 
       pthread_mutex_lock(&stdout_mutex);
       printf("User %02d removed\n", msg->IdSender);
@@ -194,21 +162,39 @@ void *client_thread(void *data)
       // broadcast
       if (msg->IdReceiver == 0)
       {
-        // send to every socket in the connection pool
-        for (int i = 1; i <= MAX_CONNECTIONS; i++)
-        {
-          if (connections[i] != 0)
-            send_message(connections[i], msg);
-        }
+        res.IdMsg = msg->IdMsg;
+        res.IdSender = msg->IdSender;
+        res.IdReceiver = msg->IdReceiver;
 
-        // log message
+        // re-assemble message
         time_t mytime;
         time(&mytime);
         struct tm now;
         localtime_r(&mytime, &now);
+
+        // bigger to fit the whole message with metadata
+        char message[3000];
+        memset(message, 0, MAX_MSG_SZ);
+        sprintf(message, "[%02d:%02d] %02d: %s", now.tm_hour, now.tm_min, msg->IdSender, msg->Message);
+        strncpy(res.Message, message, MAX_MSG_SZ);
+
+        // display public message on server
         pthread_mutex_lock(&stdout_mutex);
-        printf("[%02d:%02d] %02d: %s\n", now.tm_hour, now.tm_min, msg->IdSender, msg->Message);
+        printf("%s\n", res.Message);
         pthread_mutex_unlock(&stdout_mutex);
+
+        // send to every socket in the connection pool but the sender
+        for (int i = 1; i <= MAX_CONNECTIONS; i++)
+        {
+          if (connections[i] != 0 && i != msg->IdSender)
+            send_message(connections[i], &res);
+        }
+
+        // send specific message to sender
+        memset(message, 0, MAX_MSG_SZ);
+        sprintf(message, "[%02d:%02d] -> all: %s", now.tm_hour, now.tm_min, msg->Message);
+        strncpy(res.Message, message, MAX_MSG_SZ);
+        send_message(connections[msg->IdSender], &res);
       }
       // unicast
       else
@@ -220,18 +206,33 @@ void *client_thread(void *data)
           printf("User %02d not found\n", msg->IdReceiver);
           pthread_mutex_unlock(&stdout_mutex);
 
-          struct message err_msg;
-          err_msg.IdMsg = 7;
-          err_msg.IdSender = 0;
-          err_msg.IdReceiver = 0;
-          strcpy(err_msg.Message, "03");
-          send_message(connections[msg->IdSender], &err_msg);
+          res.IdMsg = 7;
+          res.IdSender = 0;
+          res.IdReceiver = 0;
+          memset(res.Message, 0, MAX_MSG_SZ);
+          strcpy(res.Message, "03");
+          send_message(connections[msg->IdSender], &res);
           continue;
         }
 
-        // Send to both so sender knows it was sent successfull
-        send_message(connections[msg->IdSender], msg);
-        send_message(connections[msg->IdReceiver], msg);
+        // re-assemble message
+        time_t mytime;
+        time(&mytime);
+        struct tm now;
+        localtime_r(&mytime, &now);
+
+        // bigger to fit the whole message with metadata
+        char message[3000];
+        memset(message, 0, MAX_MSG_SZ);
+        sprintf(message, "P [%02d:%02d] %02d: %s", now.tm_hour, now.tm_min, msg->IdSender, msg->Message);
+        strncpy(res.Message, message, MAX_MSG_SZ);
+        send_message(connections[msg->IdReceiver], &res);
+
+        // send specific message to sender
+        memset(message, 0, MAX_MSG_SZ);
+        sprintf(message, "P [%02d:%02d] -> %02d: %s", now.tm_hour, now.tm_min, msg->IdSender, msg->Message);
+        strncpy(res.Message, message, MAX_MSG_SZ);
+        send_message(connections[msg->IdSender], &res);
       }
     }
   }

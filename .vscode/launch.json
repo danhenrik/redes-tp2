@@ -1,0 +1,49 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Client",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [
+        "127.0.0.1",
+        "5151"
+      ],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "cwd": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP2",
+      "program": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP2/user",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    },
+    {
+      "name": "Server",
+      "type": "cppdbg",
+      "request": "launch",
+      "args": [
+        "v4",
+        "5151"
+      ],
+      "stopAtEntry": false,
+      "externalConsole": false,
+      "cwd": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP2",
+      "program": "/mnt/c/Users/Daniel/Google Drive/UFMG/Redes/TP2/server",
+      "MIMode": "gdb",
+      "miDebuggerPath": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        }
+      ]
+    },
+  ]
+}
